@@ -2,173 +2,307 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>GCP Data Analytics — Student AI Coach</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GCP Data Analytics - Student AI Coach</title>
   <style>
-    :root { --gcp-blue: #1a73e8; --bg: #f8f9fa; --card: #ffffff; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); margin: 0; padding: 20px; }
-    .container { max-width: 900px; margin: 0 auto; }
-    header { background: var(--card); padding: 20px 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-left: 6px solid var(--gcp-blue); margin-bottom: 20px; }
-    h1 { font-size: 1.4rem; color: #202124; margin-bottom: 4px; }
-    .status { font-size: 0.85rem; color: #5f6368; }
-
-    .chat-box { background: var(--card); border-radius: 12px; padding: 20px; min-height: 400px; max-height: 600px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 16px; }
-    .msg { padding: 12px 16px; border-radius: 8px; max-width: 85%; line-height: 1.5; font-size: 0.95rem; }
-    .msg.user { align-self: flex-end; background: var(--gcp-blue); color: white; }
-    .msg.bot { align-self: flex-start; background: #e8f0fe; color: #202124; border: 1px solid #d2e3fc; }
-    .sources { margin-top: 10px; font-size: 0.82rem; color: #3c4043; border-top: 1px solid #d2e3fc; padding-top: 6px; }
-    .source-link { color: var(--gcp-blue); text-decoration: none; font-weight: 600; display: block; margin-top: 4px; }
-    .source-link:hover { text-decoration: underline; }
-
-    .input-row { display: flex; gap: 8px; }
-    input[type="text"] { flex: 1; padding: 14px 18px; border: 1px solid #dadce0; border-radius: 8px; font-size: 1rem; outline: none; }
-    input[type="text"]:focus { border-color: var(--gcp-blue); }
-    button { background: var(--gcp-blue); color: white; border: none; border-radius: 8px; padding: 0 24px; font-weight: 600; cursor: pointer; }
-    button:disabled { background: #dadce0; cursor: not-allowed; }
+    :root { --blue:#1a73e8; --bg:#f8f9fa; --card:#fff; --text:#202124; --muted:#5f6368; --border:#dadce0; --bot:#e8f0fe; --bot-border:#d2e3fc; --error:#fce8e6; --warning:#fef7e0; }
+    * { box-sizing:border-box; }
+    body { margin:0; padding:20px; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; }
+    .container { max-width:900px; margin:0 auto; }
+    header,.controls,.chat-box { background:var(--card); border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.1); }
+    header { padding:20px 24px; border-left:6px solid var(--blue); margin-bottom:20px; }
+    h1 { margin:0 0 6px; font-size:1.4rem; }
+    .status { color:var(--muted); font-size:.85rem; }
+    .chat-box { min-height:400px; max-height:600px; overflow-y:auto; padding:20px; margin-bottom:16px; display:flex; flex-direction:column; gap:14px; }
+    .msg { max-width:88%; padding:12px 16px; border-radius:8px; line-height:1.5; font-size:.95rem; overflow-wrap:anywhere; }
+    .msg.user { align-self:flex-end; background:var(--blue); color:#fff; white-space:pre-wrap; }
+    .msg.bot { align-self:flex-start; background:var(--bot); border:1px solid var(--bot-border); }
+    .msg.error { background:var(--error); border-color:#f28b82; }
+    .answer-text { white-space:pre-wrap; }
+    .sources { margin-top:12px; padding-top:9px; border-top:1px solid var(--bot-border); color:#3c4043; font-size:.82rem; }
+    .source-heading { display:block; margin-bottom:5px; }
+    .source-link { display:block; margin-top:5px; color:var(--blue); font-weight:600; text-decoration:none; overflow-wrap:anywhere; }
+    .source-link:hover,.source-link:focus { text-decoration:underline; }
+    .web-warning { margin-top:12px; padding:9px 11px; background:var(--warning); border:1px solid #f9ab00; border-radius:6px; color:#5f3b00; font-size:.82rem; }
+    .controls { padding:16px; }
+    .search-option { display:flex; align-items:flex-start; gap:9px; margin-bottom:12px; color:#3c4043; font-size:.9rem; cursor:pointer; }
+    .search-option input { width:17px; height:17px; margin-top:1px; accent-color:var(--blue); }
+    .search-description { display:block; margin-top:2px; color:var(--muted); font-size:.78rem; }
+    .input-row { display:flex; gap:8px; }
+    input[type="text"] { flex:1; min-width:0; padding:14px 18px; border:1px solid var(--border); border-radius:8px; outline:none; font-size:1rem; }
+    input[type="text"]:focus { border-color:var(--blue); box-shadow:0 0 0 2px rgba(26,115,232,.16); }
+    button { min-width:90px; padding:0 24px; border:0; border-radius:8px; background:var(--blue); color:#fff; font-weight:600; cursor:pointer; }
+    button:disabled { background:var(--border); cursor:not-allowed; }
+    @media (max-width:600px) { body{padding:10px}.chat-box{padding:14px}.msg{max-width:96%}.input-row{flex-direction:column}button{min-height:46px} }
   </style>
-
-  <!-- Load in-browser transformers engine -->
-  <script type="module">
-    import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
-    env.allowLocalModels = false;
-    window.pipeline = pipeline;
-    window.dispatchEvent(new Event('transformersLoaded'));
-  </script>
 </head>
 <body>
+  <div class="container">
+    <header>
+      <h1>GCP Data Analytics - Student AI Coach</h1>
+      <div class="status" id="statusText" role="status" aria-live="polite">Loading the local embedding model and course knowledge base...</div>
+    </header>
 
-<div class="container">
-  <header>
-    <h1>GCP Data Analytics — Student AI Coach</h1>
-    <div class="status" id="statusText">⏳ Loading local model and knowledge base...</div>
-  </header>
+    <main>
+      <div class="chat-box" id="chatBox" aria-live="polite">
+        <div class="msg bot"><div class="answer-text">Hello! I am your AI Coach, grounded on the course PDFs.
 
-  <div class="chat-box" id="chatBox">
-    <div class="msg bot">
-      👋 Hello! I am your AI Coach grounded directly on your course PDFs.<br><br>
-      Ask any questions about BigQuery, LookML, SQL queries, or specific course labs.
-    </div>
+Ask a question about BigQuery, SQL, LookML, data pipelines, or a course lab. Enable web search only when you need current information.</div></div>
+      </div>
+
+      <div class="controls">
+        <label class="search-option" for="webSearchEnabled">
+          <input type="checkbox" id="webSearchEnabled" disabled>
+          <span>Include current web information<span class="search-description">Uses Tavily for this question. Leave disabled for course-only answers.</span></span>
+        </label>
+        <form class="input-row" id="chatForm">
+          <input type="text" id="userInput" placeholder="Ask a question about the course..." autocomplete="off" maxlength="2000" disabled>
+          <button type="submit" id="sendBtn" disabled>Ask</button>
+        </form>
+      </div>
+    </main>
   </div>
 
-  <form class="input-row" id="chatForm">
-    <input type="text" id="userInput" placeholder="Ask a question about labs, quizzes, or course concepts..." disabled>
-    <button type="submit" id="sendBtn" disabled>Ask</button>
-  </form>
-</div>
+  <script type="module">
+    import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
 
-<script>
-  const PROXY_URL = "https://gcp-cda-worker.yveslacroix83400.workers.dev";
-  const GITHUB_REPO_URL = "https://github.com/yveslacroix83400/course_pdfs/blob/main/";
+    env.allowLocalModels = false;
 
-  let knowledgeBase = [];
-  let embedder = null;
+    const PROXY_URL = "https://gcp-cda-proxy.yveslacroix83400.workers.dev/";
+    const GITHUB_REPO_URL = "https://github.com/yveslacroix83400/course_pdfs/blob/main/";
+    const MODEL_NAME = "openai/gpt-oss-120b";
+    const MAX_COURSE_CONTEXT_CHARACTERS = 12000;
 
-  function dotProduct(vecA, vecB) {
-    let dot = 0.0;
-    for (let i = 0; i < vecA.length; i++) {
-      dot += vecA[i] * vecB[i];
+    let knowledgeBase = [];
+    let embedder = null;
+    let applicationReady = false;
+
+    const statusText = document.getElementById("statusText");
+    const chatBox = document.getElementById("chatBox");
+    const chatForm = document.getElementById("chatForm");
+    const userInput = document.getElementById("userInput");
+    const sendButton = document.getElementById("sendBtn");
+    const webSearchCheckbox = document.getElementById("webSearchEnabled");
+
+    function setControlsEnabled(enabled) {
+      userInput.disabled = !enabled;
+      sendButton.disabled = !enabled;
+      webSearchCheckbox.disabled = !enabled;
     }
-    return dot;
-  }
 
-  window.addEventListener('transformersLoaded', async () => {
-    const status = document.getElementById("statusText");
-    try {
-      status.innerText = "⏳ Loading in-browser embedding engine...";
-      embedder = await window.pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+    function scrollChatToBottom() { chatBox.scrollTop = chatBox.scrollHeight; }
 
-      status.innerText = "⏳ Loading course documents...";
-      const res = await fetch("./knowledge_base.json");
-      knowledgeBase = await res.json();
-
-      status.innerText = `✅ Ready! Loaded ${knowledgeBase.length} course sections.`;
-      document.getElementById("userInput").disabled = false;
-      document.getElementById("sendBtn").disabled = false;
-    } catch (err) {
-      status.innerText = `❌ Error initializing: ${err.message}`;
+    function formatUnknownError(error) {
+      if (error instanceof Error && error.message) return error.message;
+      if (typeof error === "string") return error;
+      try { return JSON.stringify(error, null, 2); } catch { return String(error); }
     }
-  });
 
-  async function getLocalQueryEmbedding(text) {
-    const output = await embedder(text, { pooling: 'mean', normalize: true });
-    return Array.from(output.data);
-  }
+    function extractApiError(data) {
+      if (!data) return "The proxy returned an empty response.";
+      if (typeof data.error === "string") return data.error;
+      if (data.error && typeof data.error === "object") return data.error.message || data.error.detail || data.error.description || JSON.stringify(data.error);
+      if (typeof data.message === "string") return data.message;
+      if (typeof data.detail === "string") return data.detail;
+      return JSON.stringify(data);
+    }
 
-  async function askAlbert(query, topChunks) {
-    const context = topChunks.map((c, i) => `[Source: ${c.file}]\n${c.text}`).join("\n\n---\n\n");
+    function dotProduct(a, b) {
+      if (!Array.isArray(a) || !Array.isArray(b) || !a.length || a.length !== b.length) return Number.NEGATIVE_INFINITY;
+      let sum = 0;
+      for (let i = 0; i < a.length; i += 1) sum += Number(a[i]) * Number(b[i]);
+      return Number.isFinite(sum) ? sum : Number.NEGATIVE_INFINITY;
+    }
 
-    const systemPrompt = `You are a coach for the Google Cloud Data Analytics beginner's certificate.
-Answer the student's question based strictly on the provided course excerpts.
-Explain clearly and cite the exact course file names at the end.`;
+    function buildGitHubFileUrl(fileName) {
+      return GITHUB_REPO_URL + String(fileName || "").split("/").map(encodeURIComponent).join("/");
+    }
 
-    const res = await fetch(PROXY_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "chat",
-        payload: {
-          model: "AgentPublic/llama3-instruct-8b",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: `Course context:\n${context}\n\nStudent question: ${query}` }
-          ],
-          temperature: 0.2
-        }
-      })
+    function addCourseSources(container, chunks) {
+      if (!chunks.length) return;
+      const box = document.createElement("div");
+      box.className = "sources";
+      const title = document.createElement("strong");
+      title.className = "source-heading";
+      title.textContent = "Course PDF sources:";
+      box.appendChild(title);
+      chunks.forEach((chunk) => {
+        const link = document.createElement("a");
+        link.className = "source-link";
+        link.href = buildGitHubFileUrl(chunk.file);
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = `${chunk.course ? chunk.course + ": " : ""}${chunk.title || chunk.file || "Course document"}`;
+        box.appendChild(link);
+      });
+      container.appendChild(box);
+    }
+
+    function addWebSources(container, sources) {
+      if (!Array.isArray(sources) || !sources.length) return;
+      const box = document.createElement("div");
+      box.className = "sources";
+      const title = document.createElement("strong");
+      title.className = "source-heading";
+      title.textContent = "Current web sources:";
+      box.appendChild(title);
+      sources.forEach((source) => {
+        if (!source?.url) return;
+        try {
+          const url = new URL(source.url);
+          if (!['http:', 'https:'].includes(url.protocol)) return;
+          const link = document.createElement("a");
+          link.className = "source-link";
+          link.href = url.href;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = source.title || url.hostname;
+          box.appendChild(link);
+        } catch {}
+      });
+      if (box.children.length > 1) container.appendChild(box);
+    }
+
+    function addWebWarning(container, warning) {
+      if (!warning) return;
+      const box = document.createElement("div");
+      box.className = "web-warning";
+      box.textContent = `Web search warning: ${warning}`;
+      container.appendChild(box);
+    }
+
+    async function initializeApplication() {
+      setControlsEnabled(false);
+      try {
+        statusText.textContent = "Loading the in-browser embedding engine...";
+        embedder = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2");
+        statusText.textContent = "Loading the course knowledge base...";
+        const response = await fetch("./knowledge_base.json", { cache: "no-cache" });
+        if (!response.ok) throw new Error(`Unable to load knowledge_base.json (HTTP ${response.status}).`);
+        const loaded = await response.json();
+        if (!Array.isArray(loaded)) throw new Error("knowledge_base.json does not contain an array.");
+        knowledgeBase = loaded.filter((item) => item && typeof item.text === "string" && Array.isArray(item.embedding) && item.embedding.length);
+        if (!knowledgeBase.length) throw new Error("The knowledge base contains no valid course sections.");
+        applicationReady = true;
+        setControlsEnabled(true);
+        statusText.textContent = `Ready! Loaded ${knowledgeBase.length} course sections. Web search is available on request.`;
+        userInput.focus();
+      } catch (error) {
+        console.error("Initialization error:", error);
+        statusText.textContent = `Error initializing: ${formatUnknownError(error)}`;
+      }
+    }
+
+    async function getLocalQueryEmbedding(text) {
+      if (!embedder) throw new Error("The local embedding engine is not ready.");
+      const output = await embedder(text, { pooling: "mean", normalize: true });
+      const vector = Array.from(output.data || []);
+      if (!vector.length) throw new Error("The embedding engine returned an empty vector.");
+      return vector;
+    }
+
+    function selectRelevantCourseChunks(vector, count = 3) {
+      return knowledgeBase.map((item) => ({ ...item, score: dotProduct(vector, item.embedding) }))
+        .filter((item) => Number.isFinite(item.score))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, count);
+    }
+
+    async function askGroq(query, chunks, webSearchEnabled) {
+      let context = chunks.map((chunk) => `[Source: ${chunk.file}]\n${chunk.text}`).join("\n\n---\n\n");
+      context = context.slice(0, MAX_COURSE_CONTEXT_CHARACTERS);
+
+      const systemPrompt = webSearchEnabled
+        ? "You are a coach for the Google Cloud Data Analytics beginner's certificate. Use course excerpts as the primary source and current web results when relevant. Clearly distinguish course information from web information. Do not invent facts, filenames, URLs, or citations."
+        : "You are a coach for the Google Cloud Data Analytics beginner's certificate. Answer using the supplied course excerpts. If they are insufficient, clearly say what is missing. Do not invent facts, filenames, or citations.";
+
+      let response;
+      try {
+        response = await fetch(PROXY_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "chat",
+            webSearch: { enabled: webSearchEnabled, query },
+            payload: {
+              model: MODEL_NAME,
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: `Course context:\n${context}\n\nStudent question: ${query}` }
+              ],
+              temperature: 0.2,
+              max_completion_tokens: 1200
+            }
+          })
+        });
+      } catch (error) {
+        throw new Error(`Unable to reach the proxy: ${formatUnknownError(error)}`);
+      }
+
+      const rawText = await response.text();
+      console.log("Proxy HTTP status:", response.status);
+      console.log("Proxy raw response:", rawText);
+      let data;
+      try { data = rawText ? JSON.parse(rawText) : {}; }
+      catch { throw new Error(`The proxy returned non-JSON (HTTP ${response.status}): ${rawText.slice(0, 800)}`); }
+      if (!response.ok) throw new Error(`Proxy HTTP ${response.status}: ${extractApiError(data)}`);
+      if (data.error) throw new Error(extractApiError(data));
+      const answer = data?.choices?.[0]?.message?.content;
+      if (typeof answer !== "string" || !answer.trim()) throw new Error(`Unexpected proxy response: ${JSON.stringify(data).slice(0, 1000)}`);
+      return {
+        answer: answer.trim(),
+        webSources: Array.isArray(data.web_sources) ? data.web_sources : [],
+        webSearchRequested: data?.web_search?.requested === true,
+        webSearchSuccessful: data?.web_search?.successful === true,
+        webSearchWarning: data?.web_search?.warning || null
+      };
+    }
+
+    chatForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!applicationReady) return;
+      const query = userInput.value.trim();
+      if (!query) return;
+      const webSearchEnabled = webSearchCheckbox.checked;
+      userInput.value = "";
+      setControlsEnabled(false);
+
+      const userMessage = document.createElement("div");
+      userMessage.className = "msg user";
+      userMessage.textContent = query;
+      chatBox.appendChild(userMessage);
+
+      const botMessage = document.createElement("div");
+      botMessage.className = "msg bot";
+      botMessage.textContent = webSearchEnabled ? "Searching course PDFs and current web sources..." : "Searching course PDFs and consulting the coach...";
+      chatBox.appendChild(botMessage);
+      scrollChatToBottom();
+
+      try {
+        const vector = await getLocalQueryEmbedding(query);
+        const chunks = selectRelevantCourseChunks(vector, 3);
+        if (!chunks.length) throw new Error("No compatible course excerpts were found.");
+        const result = await askGroq(query, chunks, webSearchEnabled);
+        botMessage.textContent = "";
+        const answer = document.createElement("div");
+        answer.className = "answer-text";
+        answer.textContent = result.answer;
+        botMessage.appendChild(answer);
+        addCourseSources(botMessage, chunks);
+        addWebSources(botMessage, result.webSources);
+        if (result.webSearchRequested && !result.webSearchSuccessful && result.webSearchWarning) addWebWarning(botMessage, result.webSearchWarning);
+      } catch (error) {
+        console.error("Complete request error:", error);
+        botMessage.classList.add("error");
+        botMessage.textContent = `Error: ${formatUnknownError(error)}`;
+      } finally {
+        setControlsEnabled(true);
+        userInput.focus();
+        scrollChatToBottom();
+      }
     });
 
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    return data.choices[0].message.content;
-  }
-
-  document.getElementById("chatForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const input = document.getElementById("userInput");
-    const query = input.value.trim();
-    if (!query) return;
-
-    input.value = "";
-    const chatBox = document.getElementById("chatBox");
-
-    const userDiv = document.createElement("div");
-    userDiv.className = "msg user";
-    userDiv.innerText = query;
-    chatBox.appendChild(userDiv);
-
-    const botDiv = document.createElement("div");
-    botDiv.className = "msg bot";
-    botDiv.innerText = "🔍 Searching course PDFs & consulting coach...";
-    chatBox.appendChild(botDiv);
-    chatBox.scrollTop = chatBox.scrollHeight;
-
-    try {
-      // 1. In-browser embedding of user query
-      const queryVec = await getLocalQueryEmbedding(query);
-
-      // 2. Rank knowledge base
-      const scored = knowledgeBase.map(item => ({
-        ...item,
-        score: dotProduct(queryVec, item.embedding)
-      }));
-      scored.sort((a, b) => b.score - a.score);
-      const top3 = scored.slice(0, 3);
-
-      // 3. Ask Albert with selected chunks
-      const answer = await askAlbert(query, top3);
-
-      let sourcesHtml = `<div class="sources"><strong>Grounded on:</strong>`;
-      top3.forEach(c => {
-        sourcesHtml += `<a class="source-link" href="${GITHUB_REPO_URL + encodeURIComponent(c.file)}" target="_blank">📄 ${c.course}: ${c.title}</a>`;
-      });
-      sourcesHtml += `</div>`;
-
-      botDiv.innerHTML = answer.replace(/\n/g, "<br>") + sourcesHtml;
-    } catch (err) {
-      botDiv.innerText = `Error: ${err.message}`;
-    }
-    chatBox.scrollTop = chatBox.scrollHeight;
-  });
-</script>
+    initializeApplication();
+  </script>
 </body>
 </html>
