@@ -201,12 +201,277 @@ Ask a question about BigQuery, SQL, LookML, data pipelines, or a course lab. Ena
       return vector;
     }
 
-    function selectRelevantCourseChunks(vector, count = 3) {
-      return knowledgeBase.map((item) => ({ ...item, score: dotProduct(vector, item.embedding) }))
-        .filter((item) => Number.isFinite(item.score))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, count);
+    function normalizeSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function extractRetrievalHints(query) {
+  const normalizedQuery = normalizeSearchText(query);
+
+  const courseMatch = normalizedQuery.match(
+    /\bcourse\s*(\d+)\b/
+  );
+
+  const explicitQuizMatch = normalizedQuery.match(
+    /\bquiz\s*(\d+)\b/
+  );
+
+  const ordinalQuizPatterns = [
+    {
+      pattern: /\bfirst\s+quiz\b/,
+      number: "1"
+    },
+    {
+      pattern: /\bsecond\s+quiz\b/,
+      number: "2"
+    },
+    {
+      pattern: /\bthird\s+quiz\b/,
+      number: "3"
+    },
+    {
+      pattern: /\bfourth\s+quiz\b/,
+      number: "4"
+    },
+    {
+      pattern: /\bfifth\s+quiz\b/,
+      number: "5"
     }
+  ];
+
+  let quizNumber =
+    explicitQuizMatch?.[1] || null;
+
+  if (!quizNumber) {
+    const ordinalMatch =
+      ordinalQuizPatterns.find((item) =>
+        item.pattern.test(normalizedQuery)
+      );
+
+    quizNumber =
+      ordinalMatch?.number || null;
+  }
+
+  return {
+    normalizedQuery,
+    courseNumber:
+      courseMatch?.[1] || null,
+    quizNumber,
+    asksForFirstQuiz:
+      /\bfirst\s+quiz\b/.test(normalizedQuery)
+  };
+}
+
+function extractDocumentSequence(fileName) {
+  const normalizedFileName =
+    String(fileName || "").toLowerCase();
+
+  const sequenceMatch =
+    normalizedFileName.match(
+      /course\d+_(\d+)_/
+    );
+
+  return sequenceMatch
+    ? Number(sequenceMatch[1])
+    : Number.POSITIVE_INFINITY;
+}
+
+function calculateMetadataBonus(
+  item,
+  query,
+  firstQuizSequence
+) {
+  const hints =
+    extractRetrievalHints(query);
+
+  const fileName =
+    normalizeSearchText(item.file);
+
+  const compactFileName =
+    String(item.file || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "");
+
+  const title =
+    normalizeSearchText(item.title);
+
+  const course =
+    normalizeSearchText(item.course);
+
+  const metadata =
+    `${fileName} ${title} ${course}`;
+
+  let bonus = 0;
+
+  if (hints.courseNumber) {
+    const courseWithSpace =
+      `course ${hints.courseNumber}`;
+
+    const compactCourse =
+      `course${hints.courseNumber}`;
+
+    if (
+      metadata.includes(courseWithSpace) ||
+      compactFileName.includes(compactCourse)
+    ) {
+      bonus += 0.45;
+    } else {
+      bonus -= 0.35;
+    }
+  }
+
+  if (hints.quizNumber) {
+    const quizWithSpace =
+      `quiz ${hints.quizNumber}`;
+
+    const compactQuiz =
+      `quiz${hints.quizNumber}`;
+
+    if (
+      metadata.includes(quizWithSpace) ||
+      compactFileName.includes(compactQuiz)
+    ) {
+      bonus += 0.65;
+    }
+  }
+
+  if (
+    hints.asksForFirstQuiz &&
+    Number.isFinite(firstQuizSequence) &&
+    extractDocumentSequence(item.file) ===
+      firstQuizSequence
+  ) {
+    bonus += 0.8;
+  }
+
+  const usefulWords =
+    hints.normalizedQuery
+      .split(" ")
+      .filter((word) =>
+        word.length >= 4 &&
+        ![
+          "tell",
+          "more",
+          "about",
+          "first",
+          "course",
+          "quiz"
+        ].includes(word)
+      );
+
+  for (const word of usefulWords) {
+    if (metadata.includes(word)) {
+      bonus += 0.05;
+    }
+  }
+
+  return bonus;
+}
+
+function findFirstQuizSequence(query) {
+  const hints =
+    extractRetrievalHints(query);
+
+  if (
+    !hints.asksForFirstQuiz ||
+    !hints.courseNumber
+  ) {
+    return null;
+  }
+
+  const matchingSequences = knowledgeBase
+    .filter((item) => {
+      const compactFileName =
+        String(item.file || "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "");
+
+      return (
+        compactFileName.includes(
+          `course${hints.courseNumber}`
+        ) &&
+        compactFileName.includes("quiz")
+      );
+    })
+    .map((item) =>
+      extractDocumentSequence(item.file)
+    )
+    .filter((sequence) =>
+      Number.isFinite(sequence)
+    );
+
+  return matchingSequences.length
+    ? Math.min(...matchingSequences)
+    : null;
+}
+
+function selectRelevantCourseChunks(
+  queryVector,
+  query,
+  maximumResults = 5
+) {
+  const firstQuizSequence =
+    findFirstQuizSequence(query);
+
+  const rankedChunks = knowledgeBase
+    .map((item) => {
+      const semanticScore =
+        dotProduct(
+          queryVector,
+          item.embedding
+        );
+
+      const metadataBonus =
+        calculateMetadataBonus(
+          item,
+          query,
+          firstQuizSequence
+        );
+
+      return {
+        ...item,
+        semanticScore,
+        metadataBonus,
+        score:
+          semanticScore +
+          metadataBonus
+      };
+    })
+    .filter((item) =>
+      Number.isFinite(item.score)
+    )
+    .sort((itemA, itemB) =>
+      itemB.score - itemA.score
+    );
+
+  /*
+   * Avoid using several chunks from the same PDF
+   * before including other relevant documents.
+   */
+  const selectedChunks = [];
+  const selectedFiles = new Set();
+
+  for (const item of rankedChunks) {
+    if (!selectedFiles.has(item.file)) {
+      selectedChunks.push(item);
+      selectedFiles.add(item.file);
+    }
+
+    if (
+      selectedChunks.length >=
+      maximumResults
+    ) {
+      break;
+    }
+  }
+
+  return selectedChunks;
+}
 
     async function askGroq(query, chunks, webSearchEnabled) {
       let context = chunks.map((chunk) => `[Source: ${chunk.file}]\n${chunk.text}`).join("\n\n---\n\n");
@@ -280,7 +545,27 @@ Ask a question about BigQuery, SQL, LookML, data pipelines, or a course lab. Ena
 
       try {
         const vector = await getLocalQueryEmbedding(query);
-        const chunks = selectRelevantCourseChunks(vector, 3);
+        const chunks =
+  selectRelevantCourseChunks(
+    vector,
+    query,
+    5
+  );
+
+console.log(
+  "Selected course chunks:",
+  chunks.map((chunk) => ({
+    file: chunk.file,
+    course: chunk.course,
+    title: chunk.title,
+    semanticScore:
+      chunk.semanticScore,
+    metadataBonus:
+      chunk.metadataBonus,
+    finalScore:
+      chunk.score
+  }))
+);
         if (!chunks.length) throw new Error("No compatible course excerpts were found.");
         const result = await askGroq(query, chunks, webSearchEnabled);
         botMessage.textContent = "";
